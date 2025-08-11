@@ -1,11 +1,11 @@
 ---
-- hosts: basehosts
+- hosts: homelab2025
   become: true
   serial: 1
   tasks:
   - name: suppress banner
     file:
-      path: "/home/ubuntu/.hushlogin"
+      path: "/home/daniel/.hushlogin"
       state: touch
 
   - name: base packages
