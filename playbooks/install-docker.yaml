@@ -1,6 +1,6 @@
 ---
 - name: docker setup
-  hosts: docker
+  hosts: homelab2025
   become: true
   tasks:
     - name: Add Docker GPG apt Key
@@ -25,9 +25,9 @@
         regexp: 'disabled_plugins = \[\"cri\"\]'
         replace: '# disabled_plugins = ["cri"]'
 
-    - name: Add ubuntu to docker group
+    - name: Add daniel to docker group
       ansible.builtin.user:
-        name: ubuntu
+        name: daniel
         groups: docker
         append: true
 
