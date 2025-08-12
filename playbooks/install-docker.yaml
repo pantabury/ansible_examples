@@ -8,6 +8,12 @@
         url: https://download.docker.com/linux/ubuntu/gpg
         state: present
 
+    - name: Remove old Docker repo definition (if exists)
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
+        state: absent
+
+
     - name: Add Docker Repository
       apt_repository:
         repo: deb https://download.docker.com/linux/ubuntu noble stable
