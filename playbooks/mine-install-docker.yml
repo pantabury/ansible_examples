@@ -1,13 +1,14 @@
 ---
-- name: Install Latest Docker, Compose, and Buildx from Official .deb Packages with Download Skipping
+- name: Failsafe Docker CE and Compose install
   hosts: all
   become: yes
   vars:
-    docker_arch: "amd64"  # change to arm64 for Raspberry Pi
-
+    docker_arch: amd64  # or arm64
+    docker_codename: "{{ ansible_lsb.codename }}"
   tasks:
-    - name: Remove any old Docker packages
-      ansible.builtin.apt:
+
+    - name: Remove old Docker packages if any
+      apt:
         name:
           - docker
           - docker-engine
@@ -22,57 +23,52 @@
         purge: yes
       ignore_errors: yes
 
-    - name: Fetch latest Docker CE version from Docker repo
-      ansible.builtin.shell: |
-        curl -fsSL https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/stable/binary-{{ docker_arch }}/Packages.gz \
-        | gunzip \
-        | grep -m1 "Package: docker-ce " -A 1 \
-        | grep Version \
-        | awk '{print $2}' \
-        | sed 's/^[0-9]://'
-      register: docker_version
-      changed_when: false
+    - name: Install required packages for apt over HTTPS
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - gnupg
+        state: present
+        update_cache: yes
 
-    - name: Show latest Docker version
-      ansible.builtin.debug:
-        msg: "Latest Docker version detected: {{ docker_version.stdout }}"
+    - name: Add Docker official GPG key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
 
-    - name: Set list of packages to download and install
-      ansible.builtin.set_fact:
-        docker_packages:
-          - name: containerd.io
-            url: "https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/pool/stable/{{ docker_arch }}/containerd.io_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-            dest: "/tmp/containerd.io_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-          - name: docker-ce-cli
-            url: "https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/pool/stable/{{ docker_arch }}/docker-ce-cli_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-            dest: "/tmp/docker-ce-cli_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-          - name: docker-ce
-            url: "https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/pool/stable/{{ docker_arch }}/docker-ce_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-            dest: "/tmp/docker-ce_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-          - name: docker-compose-plugin
-            url: "https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/pool/stable/{{ docker_arch }}/docker-compose-plugin_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-            dest: "/tmp/docker-compose-plugin_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-          - name: docker-buildx-plugin
-            url: "https://download.docker.com/linux/ubuntu/dists/{{ ansible_lsb.codename }}/pool/stable/{{ docker_arch }}/docker-buildx-plugin_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
-            dest: "/tmp/docker-buildx-plugin_{{ docker_version.stdout }}_{{ docker_arch }}.deb"
+    - name: Add Docker repo for supported Ubuntu codename
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ docker_arch }}] https://download.docker.com/linux/ubuntu {{ docker_codename }} stable"
+        state: present
+        filename: docker
 
-    - name: Download Docker packages if not already downloaded
-      ansible.builtin.get_url:
-        url: "{{ item.url }}"
-        dest: "{{ item.dest }}"
-        mode: '0644'
-        force: no
-      loop: "{{ docker_packages }}"
-      register: download_results
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
 
-    - name: Install downloaded Docker packages
-      ansible.builtin.apt:
-        deb: "{{ docker_packages | map(attribute='dest') | list }}"
-      when: download_results is changed or
-            (docker_packages | map(attribute='dest') | map('file') | map('exists') | all)
+    - name: Install Docker CE, CLI, Compose Plugin, Buildx Plugin, and containerd
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+          - docker-buildx-plugin
+        state: latest
 
-    - name: Enable & start Docker service
-      ansible.builtin.service:
+    - name: Ensure Docker service is running and enabled
+      service:
         name: docker
         state: started
         enabled: yes
+
+    - name: Verify Docker installation
+      command: docker --version
+      register: docker_version_output
+
+    - debug:
+        var: docker_version_output.stdout
