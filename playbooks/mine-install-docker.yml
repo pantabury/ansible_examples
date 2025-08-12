@@ -1,21 +1,22 @@
 ---
-- name: Install Docker CE and Docker Compose (failsafe)
+- name: Install Latest Docker CE & Docker Compose (Failsafe)
   hosts: all
   become: yes
   vars:
-    docker_gpg_key_url: https://download.docker.com/linux/ubuntu/gpg
-    docker_gpg_key_path: /etc/apt/keyrings/docker.gpg
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_gpg_path: /etc/apt/keyrings/docker.gpg
     docker_repo_file: /etc/apt/sources.list.d/docker.list
 
   tasks:
 
-    - name: Remove old Docker repository definitions (conflict prevention)
+    - name: Remove any old Docker apt sources
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/apt/sources.list.d/download_docker_com_linux_ubuntu.list
         - /etc/apt/sources.list.d/docker.list.save
+        - /etc/apt/sources.list.d/docker.list
         - /etc/apt/sources.list.d/docker-ce.list
         - /etc/apt/sources.list.d/docker-ce-stable.list
 
@@ -25,28 +26,32 @@
         state: directory
         mode: '0755'
 
-    - name: Download Docker GPG key
+    - name: Download and dearmor Docker GPG key
       ansible.builtin.get_url:
-        url: "{{ docker_gpg_key_url }}"
-        dest: "{{ docker_gpg_key_path }}"
+        url: "{{ docker_gpg_url }}"
+        dest: "{{ docker_gpg_path }}"
         mode: '0644'
-      register: docker_key_download
+      register: gpg_dl
 
-    - name: Convert Docker GPG key to dearmored format
+    - name: Re-format Docker GPG key (if freshly downloaded)
       ansible.builtin.command:
-        cmd: "gpg --dearmor -o {{ docker_gpg_key_path }}"
-        stdin: "{{ lookup('file', docker_gpg_key_path) }}"
-      when: docker_key_download.changed
-      changed_when: docker_key_download.changed
+        cmd: "gpg --dearmor -o {{ docker_gpg_path }}"
+        stdin: "{{ lookup('file', docker_gpg_path) }}"
+      when: gpg_dl.changed
+      changed_when: gpg_dl.changed
 
-    - name: Add Docker apt repository
+    - name: Add official Docker apt repository
       ansible.builtin.apt_repository:
-        repo: "deb [arch={{ ansible_architecture }} signed-by={{ docker_gpg_key_path }}] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
-        filename: docker
+        repo: "deb [arch={{ ansible_architecture }} signed-by={{ docker_gpg_path }}] https://download.docker.com/linux/ubuntu {{ ansible_lsb.codename }} stable"
         state: present
+        filename: docker
         update_cache: yes
 
-    - name: Install Docker CE and Docker Compose
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install latest Docker CE & Compose
       ansible.builtin.apt:
         name:
           - docker-ce
@@ -54,10 +59,9 @@
           - containerd.io
           - docker-buildx-plugin
           - docker-compose-plugin
-        state: present
-        update_cache: yes
+        state: latest
 
-    - name: Ensure Docker service is enabled and running
+    - name: Enable & start Docker
       ansible.builtin.service:
         name: docker
         state: started
