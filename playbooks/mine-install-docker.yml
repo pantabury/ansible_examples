@@ -1,4 +1,9 @@
-- name: Install latest Docker via official convenience script
-  ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
-  args:
-    creates: /usr/bin/docker
+---
+- name: Install Docker on Ubuntu
+  hosts: all
+  become: yes
+  tasks:
+    - name: Install latest Docker via official convenience script
+      ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
